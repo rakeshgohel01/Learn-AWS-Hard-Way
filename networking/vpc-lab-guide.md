@@ -18,7 +18,7 @@ Create a VPC with public and private subnets, configure necessary gateways, and 
 
 ```bash
 # VPC Details
-Name: Production-VPC
+Name:-VPC1
 CIDR: 10.0.0.0/16
 Region: us-east-1
 ```
@@ -76,6 +76,8 @@ Outbound:
 ### Validation Steps
 
 1. SSH into public EC2 instance
+   1. Use key pair
+   2. Use Session manager
 2. Ping internet from public instance
 3. Check routing tables
 4. Verify security group rules

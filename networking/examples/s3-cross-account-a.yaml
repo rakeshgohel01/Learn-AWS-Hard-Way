@@ -1,0 +1,47 @@
+Parameters:
+  AccountBID:
+    Type: String
+    Description: Account ID of Account B
+  AccountBAccessRole:
+    Type: String
+    Description: IAM Role in Account B with access permissions
+    Default: s3-access-account-b-role
+  BucketName:
+    Type: String
+    Default: bucket-a-415
+    Description: Name of the S3 bucket to create
+
+Resources:
+  # Create an S3 Bucket in Account A
+  AccountAS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Ref BucketName
+
+  # Create Bucket Policy to Allow Access from Account B
+  AccountAS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccountAS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AccountBID}:role/${AccountBAccessRole}'
+            Action: 's3:*'
+            Resource:
+            -  !Sub 'arn:aws:s3:::${AccountAS3Bucket}/*'
+            -  !Sub 'arn:aws:s3:::${AccountAS3Bucket}'
+Outputs:
+  S3BucketName:
+    Description: Name of the S3 bucket created in Account A
+    Value: !Ref AccountAS3Bucket
+  S3BucketArn:
+    Description: ARN of the S3 bucket created in Account A
+    Value: !GetAtt AccountAS3Bucket.Arn

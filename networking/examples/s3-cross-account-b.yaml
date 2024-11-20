@@ -1,0 +1,56 @@
+Parameters:
+  AccountAS3BucketArn:
+    Type: String
+    Description: ARN of the S3 bucket from Account A to access
+    Default: arn:aws:s3:::bucket-a-415
+  RoleName:
+    Type: String
+    Default: s3-access-account-b-role
+    Description: Name of the IAM role to be created
+
+Resources:
+  # Create IAM Role for Accessing S3 Bucket in Account A
+  AccountBAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                - !Sub '${AccountAS3BucketArn}/*'
+                - !Sub '${AccountAS3BucketArn}'
+
+  # Launch an EC2 Instance to Test Access
+  TestEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-012967cc5a8c9f891
+      IamInstanceProfile: !Ref AccountBInstanceProfile
+      KeyName: test-key
+
+  # Create Instance Profile for EC2 Instance
+  AccountBInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: AccountBInstanceProfile
+      Roles:
+        - Ref: AccountBAccessRole
+
+Outputs:
+  EC2InstanceId:
+    Description: ID of the EC2 instance created for testing
+    Value: !Ref TestEC2Instance
