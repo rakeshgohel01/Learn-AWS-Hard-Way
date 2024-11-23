@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create a development S3 bucket, a group with access to it, a user added to the group, and a temporary elevated developer role.
+
+Parameters:
+  UserName:
+    Type: String
+    Description: Name of the IAM user to create
+    Default: dev-user-lthw
+
+Resources:
+  DevelopmentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "development-bucket-${AWS::AccountId}-${AWS::Region}"
+
+  DevelopmentGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: DevelopmentGroup
+
+  DevelopmentPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DevelopmentBucketAccessPolicy
+      Groups:
+        - !Ref DevelopmentGroup
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !GetAtt DevelopmentBucket.Arn
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource: !Sub "${DevelopmentBucket.Arn}/*"
+
+  DevelopmentUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Ref UserName
+
+  AddUserToGroup:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref DevelopmentGroup
+      Users:
+        - !Ref DevelopmentUser
+
+  ElevatedDeveloperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ElevatedDeveloperRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "aws:PrincipalTag/Group": "DevelopmentGroup"
+      Policies:
+        - PolicyName: DevelopmentBucketAccessPolicy
+          PolicyDocument: !Ref DevelopmentPolicy.PolicyDocument
+
+Outputs:
+  BucketName:
+    Description: Name of the development bucket
+    Value: !Ref DevelopmentBucket
+
+  GroupName:
+    Description: Name of the development IAM group
+    Value: !Ref DevelopmentGroup
+
+  UserName:
+    Description: Name of the IAM user added to the development group
+    Value: !Ref DevelopmentUser
+
+  ElevatedDeveloperRoleArn:
+    Description: ARN of the Elevated Developer Role
+    Value: !GetAtt ElevatedDeveloperRole.Arn
