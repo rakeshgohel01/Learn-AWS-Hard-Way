@@ -31,13 +31,13 @@ Resources:
             Action:
               - s3:ListBucket
               - s3:GetBucketLocation
-            Resource: !GetAtt DevelopmentBucket.Arn
+            Resource: !Sub "arn:aws:s3:::${DevelopmentBucket}"
           - Effect: Allow
             Action:
               - s3:PutObject
               - s3:GetObject
               - s3:DeleteObject
-            Resource: !Sub "${DevelopmentBucket.Arn}/*"
+            Resource: !Sub "arn:aws:s3:::${DevelopmentBucket}/*"
 
   DevelopmentUser:
     Type: AWS::IAM::User
@@ -62,12 +62,22 @@ Resources:
             Principal:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
             Action: sts:AssumeRole
-            Condition:
-              StringEquals:
-                "aws:PrincipalTag/Group": "DevelopmentGroup"
       Policies:
-        - PolicyName: DevelopmentBucketAccessPolicy
-          PolicyDocument: !Ref DevelopmentPolicy.PolicyDocument
+        - PolicyName: ElevatedDevelopmentBucketAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub "arn:aws:s3:::${DevelopmentBucket}"
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::${DevelopmentBucket}/*"
 
 Outputs:
   BucketName:
