@@ -43,6 +43,14 @@ Resources:
     Type: AWS::IAM::User
     Properties:
       UserName: !Ref UserName
+      Policies:
+        - PolicyName: AllowAssumeElevatedRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/ElevatedDeveloperRole"
 
   AddUserToGroup:
     Type: AWS::IAM::UserToGroupAddition
@@ -60,7 +68,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS:
+                - !Sub "arn:aws:iam::${AWS::AccountId}:user/${UserName}"
             Action: sts:AssumeRole
       Policies:
         - PolicyName: ElevatedDevelopmentBucketAccessPolicy
