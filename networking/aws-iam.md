@@ -214,7 +214,6 @@ Identity X (user, group, role) can do Action Y on Resource Z
   
   aws iam create-policy --policy-name CustomDevelopmentPolicy --policy-document file://custom-development-policy.json
   aws iam attach-group-policy --group-name DevelopersGroup --policy-arn arn:aws:iam::<account-id>:policy/CustomDevelopmentPolicy
-  ```
   
   3)
   trust-policy.json
@@ -244,74 +243,58 @@ Identity X (user, group, role) can do Action Y on Resource Z
   export AWS_SESSION_TOKEN=TemporaryToken
   
   aws sts get-caller-identity 
+  ```
 
-```
 #### Scenario 2: CI/CD Pipeline
 
 * Create service role for deployment
+
 * Use temporary credentials
+
 * Implement strict resource access
+
 * ```json
-1)
-trust-policy.json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-
-
-aws iam create-role --role-name DeploymentServiceRole --assume-role-policy-document file://trust-policy.json
-
-
-aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
-aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AWSLambdaFullAccess
-aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerServiceFullAccess
-
-
-2)
-Credential check
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole
-
-
-3)
-custom_policy.json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::deployment-bucket/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "lambda:InvokeFunction"
-      ],
-      "Resource": [
-        "arn:aws:lambda:us-east-1:123456789012:function:MyDeploymentFunction"
-      ]
-    }
-  ]
-}
-
-
-aws iam create-policy --policy-name DeploymentStrictAccess --policy-document file://deployment-policy.json
-aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::<account-id>:policy/DeploymentStrictAccess
-```
+  1)
+  aws iam create-role --role-name DeploymentServiceRole --assume-role-policy-document file://trust-policy.json
+  
+  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AWSLambdaFullAccess
+  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerServiceFullAccess
+  
+  2)
+  Credential check
+  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole
+  
+  3)
+  custom_policy.json
+  {
+   "Version": "2012-10-17",
+   "Statement": [
+   {
+   "Effect": "Allow",
+   "Action": [
+   "s3:GetObject",
+   "s3:PutObject"
+   ],
+   "Resource": [
+   "arn:aws:s3:::deployment-bucket/*"
+   ]
+   },
+   {
+   "Effect": "Allow",
+   "Action": [
+   "lambda:InvokeFunction"
+   ],
+   "Resource": [
+   "arn:aws:lambda:us-east-1:123456789012:function:MyDeploymentFunction"
+   ]
+   }
+   ]
+  }
+  
+  aws iam create-policy --policy-name DeploymentStrictAccess --policy-document file://deployment-policy.json
+  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::<account-id>:policy/DeploymentStrictAccess
+  ```
 
 #### Scenario 3: Compliance Requirement
 
