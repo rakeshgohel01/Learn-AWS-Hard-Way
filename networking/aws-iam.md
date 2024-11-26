@@ -181,8 +181,11 @@ Identity X (user, group, role) can do Action Y on Resource Z
 #### Scenario 1: Developer Access
 
 * Create IAM group with development permissions
+
 * Attach specific service access policies
+
 * Enable temporary elevated access
+
 * ```bash
   1)
   aws iam create-group --group-name DevelopersGroup
@@ -211,13 +214,14 @@ Identity X (user, group, role) can do Action Y on Resource Z
   
   aws iam create-policy --policy-name CustomDevelopmentPolicy --policy-document file://custom-development-policy.json
   aws iam attach-group-policy --group-name DevelopersGroup --policy-arn arn:aws:iam::<account-id>:policy/CustomDevelopmentPolicy
-  
+  ```
   
   3)
   trust-policy.json
   {
     "Version": "2012-10-17",
     "Statement": [
+  
       {
         "Effect": "Allow",
         "Principal": {
@@ -225,9 +229,9 @@ Identity X (user, group, role) can do Action Y on Resource Z
         },
         "Action": "sts:AssumeRole"
       }
+  
     ]
   }
-  
   
   aws iam create-role --role-name DevelopersElevatedRole --assume-role-policy-document file://trust-policy.json
   
@@ -240,84 +244,154 @@ Identity X (user, group, role) can do Action Y on Resource Z
   export AWS_SESSION_TOKEN=TemporaryToken
   
   aws sts get-caller-identity 
-  ```
 
+```
 #### Scenario 2: CI/CD Pipeline
 
 * Create service role for deployment
 * Use temporary credentials
 * Implement strict resource access
 * ```json
-  1)
-  trust-policy.json
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Principal": {
-          "Service": "ec2.amazonaws.com"
-        },
-        "Action": "sts:AssumeRole"
-      }
-    ]
-  }
-  
-  
-  aws iam create-role --role-name DeploymentServiceRole --assume-role-policy-document file://trust-policy.json
-  
-  
-  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
-  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AWSLambdaFullAccess
-  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerServiceFullAccess
-  
-  
-  2)
-  Credential check
-  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole
-  
-  
-  3)
-  custom_policy.json
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": [
-          "s3:GetObject",
-          "s3:PutObject"
-        ],
-        "Resource": [
-          "arn:aws:s3:::deployment-bucket/*"
-        ]
+1)
+trust-policy.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
       },
-      {
-        "Effect": "Allow",
-        "Action": [
-          "lambda:InvokeFunction"
-        ],
-        "Resource": [
-          "arn:aws:lambda:us-east-1:123456789012:function:MyDeploymentFunction"
-        ]
-      }
-    ]
-  }
-  
-  
-  aws iam create-policy --policy-name DeploymentStrictAccess --policy-document file://deployment-policy.json
-  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::<account-id>:policy/DeploymentStrictAccess
-  
-  
-  ```
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+
+
+aws iam create-role --role-name DeploymentServiceRole --assume-role-policy-document file://trust-policy.json
+
+
+aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AWSLambdaFullAccess
+aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerServiceFullAccess
+
+
+2)
+Credential check
+curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole
+
+
+3)
+custom_policy.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::deployment-bucket/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:InvokeFunction"
+      ],
+      "Resource": [
+        "arn:aws:lambda:us-east-1:123456789012:function:MyDeploymentFunction"
+      ]
+    }
+  ]
+}
+
+
+aws iam create-policy --policy-name DeploymentStrictAccess --policy-document file://deployment-policy.json
+aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::<account-id>:policy/DeploymentStrictAccess
+```
 
 #### Scenario 3: Compliance Requirement
 
 * Use tag-based access control
+
 * Implement strict boundary policies
+
 * Enable comprehensive logging
 
-### 8. Monitoring and Compliance
+* ```bash
+  1)
+  aws s3api create-bucket --bucket cloudtrail-logs-$(aws sts get-caller-identity --query Account --output text)-$(aws configure get region) --create-bucket-configuration LocationConstraint=$(aws configure get region)
+  
+  aws s3api put-bucket-versioning --bucket cloudtrail-logs-$(aws sts get-caller-identity --query Account --output text)-$(aws configure get region) --versioning-configuration Status=Enabled
+  
+  aws s3api create-bucket --bucket resource-bucket-$(aws sts get-caller-identity --query Account --output text)-$(aws configure get region) --create-bucket-configuration LocationConstraint=$(aws configure get region)
+  
+  aws s3api put-bucket-versioning --bucket resource-bucket-$(aws sts get-caller-identity --query Account --output text)-$(aws configure get region) --versioning-configuration Status=Enabled
+  
+  2)
+  aws cloudtrail create-trail --name ComplianceTrail --s3-bucket-name cloudtrail-logs-$(aws sts get-caller-identity --query Account --output text)-$(aws configure get region) --is-multi-region-trail --enable-log-file-validation
+  
+  aws cloudtrail start-logging --name ComplianceTrail
+  
+  3)
+  aws iam create-policy --policy-name PermissionBoundaryPolicy --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+          {
+              "Effect": "Allow",
+              "Action": "s3:*",
+              "Resource": "*",
+              "Condition": {
+                  "StringEqualsIfExists": {
+                      "aws:RequestTag/Environment": "Development"
+                  }
+              }
+          },
+          {
+              "Effect": "Deny",
+              "Action": "s3:*",
+              "Resource": "*",
+              "Condition": {
+                  "StringNotEqualsIfExists": {
+                      "aws:RequestTag/Environment": "Development"
+                  }
+              }
+          }
+      ]
+  }'
+  ```
+
+### 8. Permission Boundaries
+
+**Purpose**: Permissions boundaries define the maximum permissions that an IAM entity (user or role) can have
+
+- A permissions boundary uses a managed policy to set the maximum permissions an identity-based policy can grant
+
+- They are particularly useful for delegating permissions management to developers, enabling them to create roles and policies necessary for their applications without risking over-privileged access.
+
+- Implementation
+  
+  - Create a managed policy that defines the maximum allowed permissions. 
+  
+  - Attach this policy as a permissions boundary to the relevant IAM users or roles
+
+Find more details on permission boundaries and evaluation [here](https://aws.amazon.com/blogs/security/when-and-where-to-use-iam-permissions-boundaries) and [here](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic_policy-eval-denyallow.html)
+
+![Permission Evaluation](../assets/PolicyEvaluationVerticalRCP.png)
+
+#### IAM Resource Understanding
+
+| IAM Resource                    | Purpose                                                                            | Owner/Maintainer                             | Applies To                                                      |
+| ------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------- |
+| Federated roles and policies    | Grant permissions to federated users for experimentation in lower environments     | Central team                                 | People represented by users in the enterprise identity provider |
+| IAM workload roles and policies | Grant permissions to resources used by applications, services                      | Developer                                    | IAM roles representing specific tasks performed by applications |
+| Permissions boundaries          | Limit permissions available to workload roles and policies                         | Central team                                 | Workload roles and policies created by developers               |
+| IAM users and policies          | Allowed only by exception when there is no alternative that satisfies the use case | Central team plus senior leadership approval | Break-glass access; legacy workloads unable to use IAM roles    |
+
+### 9. Monitoring and Compliance
 
 #### Monitoring Tools
 
@@ -348,7 +422,7 @@ Identity X (user, group, role) can do Action Y on Resource Z
 * Detailed access logging
 * Automated compliance checks
 
-### 9. Troubleshooting IAM
+### 10. Troubleshooting IAM
 
 #### Common Troubleshooting Techniques
 
@@ -358,7 +432,7 @@ Identity X (user, group, role) can do Action Y on Resource Z
 * Verify trust relationships
 * Understand permission boundaries
 
-### 10. Future of AWS IAM
+### 11. Future of AWS IAM
 
 * Increasing granular controls
 * More automated security
