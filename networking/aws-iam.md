@@ -258,12 +258,12 @@ Identity X (user, group, role) can do Action Y on Resource Z
   aws iam create-role --role-name DeploymentServiceRole --assume-role-policy-document file://trust-policy.json
   
   aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
-  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AWSLambdaFullAccess
-  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerServiceFullAccess
+  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AWSLambda_FullAccess
+  aws iam attach-role-policy --role-name DeploymentServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonECS_FullAccess
   
   2)
   Credential check
-  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole
+  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole9
   
   3)
   custom_policy.json
@@ -415,12 +415,7 @@ Find more details on permission boundaries and evaluation [here](https://aws.ama
 * Verify trust relationships
 * Understand permission boundaries
 
-### 11. Future of AWS IAM
-
-* Increasing granular controls
-* More automated security
-* Enhanced machine learning integration
-* Simplified management interfaces
+# 
 
 ## Conclusion
 
