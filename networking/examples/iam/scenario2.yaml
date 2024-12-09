@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for creating a deployment service role with strict access.
+
+Resources:
+  DeploymentServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: DeploymentServiceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+                - lambda.amazonaws.com
+                - s3.amazonaws.com
+            Action: sts:AssumeRole
+
+  S3FullAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: S3FullAccessPolicy
+      Roles:
+        - !Ref DeploymentServiceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource: "arn:aws:s3:::deployment-bucket/*"
+
+  LambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: LambdaInvokePolicy
+      Roles:
+        - !Ref DeploymentServiceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: "arn:aws:lambda:us-east-1:123456789012:function:MyDeploymentFunction"
+
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "deployment-bucket-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Purpose
+          Value: DeploymentBucket
+
+Outputs:
+  DeploymentRoleArn:
+    Description: ARN of the deployment service role
+    Value: !GetAtt DeploymentServiceRole.Arn
+
+  DeploymentBucketName:
+    Description: Name of the deployment bucket
+    Value: !Ref DeploymentBucket

@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to implement compliance with tag-based access control, strict boundary policies, and comprehensive logging.
+
+Resources:
+  # S3 Bucket for Storing CloudTrail Logs
+  CloudTrailLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloudtrail-logs-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Purpose
+          Value: CloudTrailLogs
+
+  # CloudTrail for Comprehensive Logging
+  CloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: ComplianceTrail
+      S3BucketName: !Ref CloudTrailLogsBucket
+      IsLogging: true
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      Tags:
+        - Key: Purpose
+          Value: ComplianceLogging
+
+  # S3 Bucket for Resources
+  ResourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "resource-bucket-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Environment
+          Value: Development
+
+  # IAM Permission Boundary
+  PermissionBoundaryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: PermissionBoundaryPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:*
+            Resource: '*'
+            Condition:
+              StringEqualsIfExists:
+                aws:RequestTag/Environment: Development
+          - Effect: Deny
+            Action: s3:*
+            Resource: '*'
+            Condition:
+              StringNotEqualsIfExists:
+                aws:RequestTag/Environment: Development
+
+  # IAM Role with Permission Boundary
+  ComplianceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ComplianceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      PermissionsBoundary: !Ref PermissionBoundaryPolicy
+      Policies:
+        - PolicyName: ComplianceRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt ResourceBucket.Arn
+                  - !Sub "${ResourceBucket.Arn}/*"
+                Condition:
+                  StringEqualsIfExists:
+                    s3:RequestTag/Environment: Development
+      Tags:
+        - Key: Environment
+          Value: Development
+
+Outputs:
+  ResourceBucketName:
+    Description: Name of the resource bucket
+    Value: !Ref ResourceBucket
+
+  ComplianceRoleArn:
+    Description: ARN of the compliance role
+    Value: !GetAtt ComplianceRole.Arn
+
+  CloudTrailName:
+    Description: Name of the CloudTrail for compliance logging
+    Value: !Ref CloudTrail
