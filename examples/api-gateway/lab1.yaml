@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for a basic HTTP API to retrieve product details using Lambda.
+
+Resources:
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ProductDetailsLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaBasicExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function
+  ProductDetailsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ProductDetailsFunction
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const products = {
+              "123": { id: "123", name: "Laptop", price: "$1000" },
+              "456": { id: "456", name: "Smartphone", price: "$500" },
+              "789": { id: "789", name: "Tablet", price: "$300" }
+            };
+            const productId = event.pathParameters.id;
+            const product = products[productId];
+            return {
+              statusCode: product ? 200 : 404,
+              body: JSON.stringify(product || { error: "Product not found" })
+            };
+          };
+
+  # API Gateway HTTP API
+  ProductDetailsHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ProductDetailsApi
+      ProtocolType: HTTP
+
+  # API Gateway Integration with Lambda
+  ProductDetailsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProductDetailsHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+        - Region: !Ref AWS::Region
+          LambdaArn: !GetAtt ProductDetailsLambda.Arn
+      PayloadFormatVersion: '2.0'
+      RequestParameters:
+        "overwrite:path.id": "$context.requestPath.id.toLowerCase()"
+
+  # API Gateway Route
+  ProductDetailsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProductDetailsHttpApi
+      RouteKey: GET /product/{id}
+      Target: !Join
+        - "/"
+        - - "integrations"
+          - !Ref ProductDetailsIntegration
+
+  # API Gateway Stage
+  ProductDetailsStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ProductDetailsHttpApi
+      StageName: dev
+      AutoDeploy: true
+
+  # Permission for API Gateway to Invoke Lambda
+  LambdaApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ProductDetailsLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub
+        - arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*
+        - Region: !Ref AWS::Region
+          AccountId: !Ref AWS::AccountId
+          ApiId: !Ref ProductDetailsHttpApi
+
+Outputs:
+  ApiEndpoint:
+    Description: URL of the HTTP API
+    Value: !Sub "https://${ProductDetailsHttpApi}.execute-api.${AWS::Region}.amazonaws.com/dev/product/{id}"
