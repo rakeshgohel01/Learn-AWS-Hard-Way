@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template for a basic HTTP API to retrieve product details using Lambda.
+Description: CloudFormation template for a REST API to retrieve product details using Lambda with parameter transformation.
 
 Resources:
   # IAM Role for Lambda Function
@@ -50,45 +50,65 @@ Resources:
             };
           };
 
-  # API Gateway HTTP API
-  ProductDetailsHttpApi:
-    Type: AWS::ApiGatewayV2::Api
+  # API Gateway REST API
+  ProductDetailsApi:
+    Type: AWS::ApiGateway::RestApi
     Properties:
       Name: ProductDetailsApi
-      ProtocolType: HTTP
 
-  # API Gateway Integration with Lambda
-  ProductDetailsIntegration:
-    Type: AWS::ApiGatewayV2::Integration
+  # API Gateway Resource
+  ProductResource:
+    Type: AWS::ApiGateway::Resource
     Properties:
-      ApiId: !Ref ProductDetailsHttpApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub
-        - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-        - Region: !Ref AWS::Region
-          LambdaArn: !GetAtt ProductDetailsLambda.Arn
-      PayloadFormatVersion: '2.0'
-      RequestParameters:
-        "overwrite:path.id": "$context.requestPath.id.toLowerCase()"
+      ParentId: !GetAtt ProductDetailsApi.RootResourceId
+      PathPart: product
+      RestApiId: !Ref ProductDetailsApi
 
-  # API Gateway Route
-  ProductDetailsRoute:
-    Type: AWS::ApiGatewayV2::Route
+  # API Gateway Method
+  GetProductMethod:
+    Type: AWS::ApiGateway::Method
     Properties:
-      ApiId: !Ref ProductDetailsHttpApi
-      RouteKey: GET /product/{id}
-      Target: !Join
-        - "/"
-        - - "integrations"
-          - !Ref ProductDetailsIntegration
+      AuthorizationType: NONE
+      HttpMethod: GET
+      ResourceId: !Ref ProductResource
+      RestApiId: !Ref ProductDetailsApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - Region: !Ref AWS::Region
+            LambdaArn: !GetAtt ProductDetailsLambda.Arn
+        RequestTemplates:
+          application/json: |
+            {
+              "pathParameters": {
+                "id": "$util.escapeJavaScript($input.params('id').toLowerCase())"
+              },
+              "queryStringParameters": {
+                #foreach($param in $input.params().querystring.keySet())
+                  "$param": "$util.escapeJavaScript($input.params().querystring.get($param))"
+                  #if($foreach.hasNext),#end
+                #end
+              },
+              "headers": {
+                #foreach($header in $input.params().header.keySet())
+                  "$header": "$util.escapeJavaScript($input.params().header.get($header))"
+                  #if($foreach.hasNext),#end
+                #end
+              },
+              "body": $input.body
+            }
+      MethodResponses:
+        - StatusCode: 200
 
-  # API Gateway Stage
-  ProductDetailsStage:
-    Type: AWS::ApiGatewayV2::Stage
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
     Properties:
-      ApiId: !Ref ProductDetailsHttpApi
+      RestApiId: !Ref ProductDetailsApi
       StageName: dev
-      AutoDeploy: true
+    DependsOn: GetProductMethod
 
   # Permission for API Gateway to Invoke Lambda
   LambdaApiInvokePermission:
@@ -101,9 +121,9 @@ Resources:
         - arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*
         - Region: !Ref AWS::Region
           AccountId: !Ref AWS::AccountId
-          ApiId: !Ref ProductDetailsHttpApi
+          ApiId: !Ref ProductDetailsApi
 
 Outputs:
   ApiEndpoint:
-    Description: URL of the HTTP API
-    Value: !Sub "https://${ProductDetailsHttpApi}.execute-api.${AWS::Region}.amazonaws.com/dev/product/{id}"
+    Description: URL of the REST API
+    Value: !Sub "https://${ProductDetailsApi}.execute-api.${AWS::Region}.amazonaws.com/dev/product/{id}"
