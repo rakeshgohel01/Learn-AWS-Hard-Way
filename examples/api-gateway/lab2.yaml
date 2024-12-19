@@ -1,0 +1,364 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Secure an API Gateway REST API with Cognito User Pool authentication and integrate it with Lambda and DynamoDB.
+
+Resources:
+  # DynamoDB Table for To-Do Items
+  ToDoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ToDoTable
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Cognito User Pool
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ToDoUserPool
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireNumbers: true
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireSymbols: false
+
+  # Cognito User Pool Client
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ToDoUserPoolClient
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - USER_PASSWORD_AUTH
+
+  # IAM Role for Lambda Execution
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ToDoLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ToDoLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt ToDoTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function for Adding a To-Do Item
+  AddToDoLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: AddToDoFunction
+      Handler: index.addTodo
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const db = new AWS.DynamoDB.DocumentClient();
+          exports.addTodo = async (event) => {
+              const todo = JSON.parse(event.body);
+              const params = {
+                  TableName: process.env.TABLE_NAME,
+                  Item: todo,
+              };
+              try {
+                  await db.put(params).promise();
+                  return {
+                      statusCode: 201,
+                      body: JSON.stringify({ message: 'To-Do item added successfully.' }),
+                  };
+              } catch (error) {
+                  return {
+                      statusCode: 500,
+                      body: JSON.stringify({ error: 'Internal Server Error' }),
+                  };
+              }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ToDoTable
+
+  # Lambda Function for Retrieving a To-Do Item
+  GetToDoLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetToDoFunction
+      Handler: index.getTodo
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const db = new AWS.DynamoDB.DocumentClient();
+          exports.getTodo = async (event) => {
+              const { id } = event.pathParameters;
+              const params = {
+                  TableName: process.env.TABLE_NAME,
+                  Key: { id },
+              };
+              try {
+                  const data = await db.get(params).promise();
+                  return {
+                      statusCode: data.Item ? 200 : 404,
+                      body: JSON.stringify(data.Item || { error: 'To-Do item not found.' }),
+                  };
+              } catch (error) {
+                  return {
+                      statusCode: 500,
+                      body: JSON.stringify({ error: 'Internal Server Error' }),
+                  };
+              }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ToDoTable
+
+  # Lambda Function for Updating a To-Do Item
+  UpdateToDoLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: UpdateToDoFunction
+      Handler: index.updateTodo
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const db = new AWS.DynamoDB.DocumentClient();
+          exports.updateTodo = async (event) => {
+              const { id } = event.pathParameters;
+              const updates = JSON.parse(event.body);
+              const params = {
+                  TableName: process.env.TABLE_NAME,
+                  Key: { id },
+                  UpdateExpression: 'set #name = :name, #status = :status',
+                  ExpressionAttributeNames: {
+                      '#name': 'name',
+                      '#status': 'status',
+                  },
+                  ExpressionAttributeValues: {
+                      ':name': updates.name,
+                      ':status': updates.status,
+                  },
+              };
+              try {
+                  await db.update(params).promise();
+                  return {
+                      statusCode: 200,
+                      body: JSON.stringify({ message: 'To-Do item updated successfully.' }),
+                  };
+              } catch (error) {
+                  return {
+                      statusCode: 500,
+                      body: JSON.stringify({ error: 'Internal Server Error' }),
+                  };
+              }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ToDoTable
+
+  # Lambda Function for Deleting a To-Do Item
+  DeleteToDoLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DeleteToDoFunction
+      Handler: index.deleteTodo
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const db = new AWS.DynamoDB.DocumentClient();
+          exports.deleteTodo = async (event) => {
+              const { id } = event.pathParameters;
+              const params = {
+                  TableName: process.env.TABLE_NAME,
+                  Key: { id },
+              };
+              try {
+                  await db.delete(params).promise();
+                  return {
+                      statusCode: 200,
+                      body: JSON.stringify({ message: 'To-Do item deleted successfully.' }),
+                  };
+              } catch (error) {
+                  return {
+                      statusCode: 500,
+                      body: JSON.stringify({ error: 'Internal Server Error' }),
+                  };
+              }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ToDoTable
+
+  # API Gateway REST API
+  ToDoApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ToDoApi
+
+  # Cognito Authorizer
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: CognitoAuthorizer
+      RestApiId: !Ref ToDoApi
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      ProviderARNs:
+        - !GetAtt CognitoUserPool.Arn
+
+  # API Gateway Resources and Methods
+  ToDoResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ToDoApi.RootResourceId
+      PathPart: todo
+      RestApiId: !Ref ToDoApi
+
+  PostToDoMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ToDoApi
+      ResourceId: !Ref ToDoResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AddToDoLambda.Arn}/invocations"
+
+  GetToDoMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ToDoApi
+      ResourceId: !Ref ToDoResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetToDoLambda.Arn}/invocations"
+
+  PutToDoMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ToDoApi
+      ResourceId: !Ref ToDoResource
+      HttpMethod: PUT
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateToDoLambda.Arn}/invocations"
+
+  DeleteToDoMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ToDoApi
+      ResourceId: !Ref ToDoResource
+      HttpMethod: DELETE
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteToDoLambda.Arn}/invocations"
+
+  # Permission for AddToDoLambda
+  AddToDoLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AddToDoLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToDoApi}/*/POST/todo"
+
+  # Permission for GetToDoLambda
+  GetToDoLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt GetToDoLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToDoApi}/*/GET/todo"
+
+  # Permission for UpdateToDoLambda
+  UpdateToDoLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt UpdateToDoLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToDoApi}/*/PUT/todo"
+
+  # Permission for DeleteToDoLambda
+  DeleteToDoLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DeleteToDoLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToDoApi}/*/DELETE/todo"
+
+  # API Gateway Deployment
+  ToDoApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - PostToDoMethod
+      - GetToDoMethod
+      - PutToDoMethod
+      - DeleteToDoMethod
+    Properties:
+      RestApiId: !Ref ToDoApi
+
+  # API Gateway Stage (optional for further configurations)
+  ToDoApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: dev
+      Description: Dev Stage for ToDo API
+      RestApiId: !Ref ToDoApi
+      DeploymentId: !Ref ToDoApiDeployment
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway Endpoint
+    Value: !Sub "https://${ToDoApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
