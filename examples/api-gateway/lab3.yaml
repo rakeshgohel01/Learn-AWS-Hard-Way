@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Incremental build: Step 3 - Integrate Lambda with sendMessage and update APIs'
+
+Resources:
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ChatWebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  ConnectRouteIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectLambda.Arn}/invocations"
+
+  DisconnectRouteIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectLambda.Arn}/invocations"
+
+  SendMessageRouteIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessageLambda.Arn}/invocations"
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${ConnectRouteIntegration}"
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${DisconnectRouteIntegration}"
+
+  SendMessageRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: sendMessage
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${SendMessageRouteIntegration}"
+
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref WebSocketApi
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - SendMessageRoute
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      DeploymentId: !Ref WebSocketDeployment
+      StageName: dev
+
+  ConnectLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.connect_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import boto3
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table('ChatConnections')
+
+          def connect_handler(event, context):
+              connection_id = event['requestContext']['connectionId']
+              table.put_item(Item={'ConnectionId': connection_id})
+              return {"statusCode": 200, "body": "Connected"}
+
+  DisconnectLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.disconnect_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import boto3
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table('ChatConnections')
+
+          def disconnect_handler(event, context):
+              connection_id = event['requestContext']['connectionId']
+              table.delete_item(Key={'ConnectionId': connection_id})
+              return {"statusCode": 200, "body": "Disconnected"}
+
+  SendMessageLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.send_message_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.9
+      Environment:
+        Variables:
+          APIG_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
+      Timeout: 10
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import os
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table('ChatConnections')
+          apigateway = boto3.client('apigatewaymanagementapi', endpoint_url=os.environ['APIG_ENDPOINT'])
+
+          def send_message_handler(event, context):
+              logger.info(f"SendMessage event: {event}")
+              try:
+                  body = json.loads(event['body'])
+                  message = body['message']
+                  logger.info(f"Message to send: {message}")
+
+                  connections = table.scan()['Items']
+                  logger.info(f"Retrieved connections: {connections}")
+
+                  for connection in connections:
+                      connection_id = connection['ConnectionId']
+                      try:
+                          logger.info(f"Sending message to Connection ID: {connection_id}")
+                          apigateway.post_to_connection(ConnectionId=connection_id, Data=json.dumps({"message": message}))
+                          logger.info(f"Message sent to Connection ID: {connection_id}")
+                      except Exception as e:
+                          logger.error(f"Failed to send message to {connection_id}: {e}")
+
+                  return {"statusCode": 200, "body": "Message Sent"}
+
+              except Exception as e:
+                  logger.error(f"Error in SendMessageLambda: {e}")
+                  return {"statusCode": 500, "body": "Internal Server Error"}
+
+  ConnectLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ConnectLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/$connect"
+
+  DisconnectLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DisconnectLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/$disconnect"
+
+  SendMessageLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SendMessageLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/sendMessage"
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaBasicExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - execute-api:ManageConnections
+                Resource: "*"
+
+  ChatConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ChatConnections
+      AttributeDefinitions:
+        - AttributeName: ConnectionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ConnectionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  WebSocketApiEndpoint:
+    Description: WebSocket API Endpoint
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
+  DynamoDBTableName:
+    Description: Name of the DynamoDB table for connections
+    Value: !Ref ChatConnectionsTable
+  SendMessageFunctionName:
+    Description: Name of the SendMessage Lambda function
+    Value: !Ref SendMessageLambda
