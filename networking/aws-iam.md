@@ -263,7 +263,7 @@ Identity X (user, group, role) can do Action Y on Resource Z
   
   2)
   Credential check
-  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole9
+  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/DeploymentServiceRole
   
   3)
   custom_policy.json
@@ -388,7 +388,7 @@ Find more details on permission boundaries and evaluation [here](https://aws.ama
   * Identifies inactive IAM users and unused access keys
   * **Use Case**: Quick insights into unused resources
 * AWS Config
-  * Continuosly tracks chanegs to IAM enttities/policies
+  * Continuosly tracks chanegs to IAM entities/policies
   * includes managed rules like
     * iam-user-no-inlline-policy
     * iam-user-unused-credentials-check
@@ -414,8 +414,6 @@ Find more details on permission boundaries and evaluation [here](https://aws.ama
 * Check policy syntax
 * Verify trust relationships
 * Understand permission boundaries
-
-# 
 
 ## Conclusion
 

@@ -139,8 +139,6 @@ Client App -> Federated Identity (Google) -> Identity Pool -> AWS Resources
 
 ---
 
-
-
 ## 7 Best Practices
 
 1. **Security**:
