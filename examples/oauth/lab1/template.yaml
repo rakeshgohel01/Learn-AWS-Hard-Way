@@ -36,6 +36,9 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
         - http://localhost:8080/callback
+      LogoutURLs:
+        - http://localhost:8080
+        - http://localhost:8080/logout
       ExplicitAuthFlows:
         - ALLOW_ADMIN_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH

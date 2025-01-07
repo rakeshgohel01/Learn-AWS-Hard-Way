@@ -192,6 +192,21 @@ def userinfo():
         logger.exception('Exception during userinfo request')
         return f'Error fetching user info: {str(e)}', 500
 
+@app.route('/logout')
+def logout():
+    logger.info('=== Handling logout request ===')
+    # Clear session
+    session.clear()
+    
+    # Construct Cognito logout URL
+    params = {
+        'client_id': CLIENT_ID,
+        'logout_uri': APP_URL
+    }
+    logout_url = f"{COGNITO_DOMAIN}/logout?{urllib.parse.urlencode(params)}"
+    logger.debug('Redirecting to Cognito logout URL: %s', logout_url)
+    return jsonify({'logout_url': logout_url})
+
 if __name__ == '__main__':
     logger.info('=== Starting Flask application ===')
     app.run(host='0.0.0.0', port=8080, debug=True)

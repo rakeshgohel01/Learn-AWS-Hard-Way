@@ -64,7 +64,24 @@ function fetchUserInfo(token) {
 
 function logout() {
   console.log("Logging out...");
+  
+  // First clear local session storage
   sessionStorage.removeItem("access_token");
-  updateUIState(null);
-  console.log("Logged out successfully");
+  
+  // Call backend to get Cognito logout URL
+  fetch("/logout", {
+    method: "GET",
+    credentials: "include",
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      console.log("Redirecting to Cognito logout URL:", data.logout_url);
+      // Redirect to Cognito logout URL
+      window.location.href = data.logout_url;
+    })
+    .catch((error) => {
+      console.error("Error during logout:", error);
+      // Even if there's an error, update the UI
+      updateUIState(null);
+    });
 }
