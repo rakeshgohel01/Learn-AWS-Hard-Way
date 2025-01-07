@@ -35,7 +35,7 @@ Resources:
         - profile
       AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
-        - http://localhost:5000/callback
+        - http://localhost:8080/callback
       ExplicitAuthFlows:
         - ALLOW_ADMIN_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
