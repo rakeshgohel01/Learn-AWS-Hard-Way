@@ -49,8 +49,8 @@ logger.debug(f"Template folder: {templates_dir}")
 logger.debug("Initialized Flask application")
 
 COGNITO_DOMAIN = 'https://oauth-lab1-920372995331-domain.auth.us-east-1.amazoncognito.com'
-CLIENT_ID = '1nau172bra5rkpejavfj2ruvv3'
-CLIENT_SECRET = '1bta25crkldftvqfuc40bc1kv48vtlfjs476a5kbh47nmvsptu8b'
+CLIENT_ID = '3otn671d6b5a1qqsi86bpdurmf'
+CLIENT_SECRET = '1elgfdu3ovoi54nivlneeorpbs4qi395f3qclut4l83353eatd2t'
 REDIRECT_URI = 'http://localhost:8080/callback'
 APP_URL = 'http://localhost:8080'
 
@@ -78,7 +78,7 @@ def login():
     params = {
         'client_id': CLIENT_ID,
         'response_type': 'code',
-        'scope': 'email profile',
+        'scope': 'openid email profile',
         'redirect_uri': REDIRECT_URI,
         'state': state
     }
@@ -159,7 +159,7 @@ def callback():
 def userinfo():
     logger.info('=== Fetching user info ===')
     access_token = request.headers.get('Authorization', '').replace('Bearer ', '')
-    
+
     if not access_token:
         logger.error('No access token provided')
         return jsonify({'error': 'No access token provided'}), 401
@@ -183,7 +183,7 @@ def logout():
     logger.info('=== Handling logout request ===')
     # Clear session
     session.clear()
-    
+
     # Construct Cognito logout URL
     params = {
         'client_id': CLIENT_ID,
