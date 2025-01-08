@@ -5,7 +5,7 @@ Resources:
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: OAuthLab1UserPool
+      UserPoolName: OAuthLab2UserPool
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
       Policies:
@@ -25,7 +25,7 @@ Resources:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: !Ref CognitoUserPool
-      ClientName: OAuthLab1Client
+      ClientName: OAuthLab2Client
       GenerateSecret: true
       AllowedOAuthFlows:
         - code
@@ -45,11 +45,12 @@ Resources:
       PreventUserExistenceErrors: ENABLED
       SupportedIdentityProviders:
         - COGNITO
+      EnableTokenRevocation: true
 
   CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: !Sub oauth-lab1-${AWS::AccountId}-domain
+      Domain: !Sub oauth-lab2-${AWS::AccountId}-domain
       UserPoolId: !Ref CognitoUserPool
 
   CognitoTestUser:
